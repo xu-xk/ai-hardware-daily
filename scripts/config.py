@@ -16,7 +16,7 @@ DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-flash")
 
 # === GitHub ===
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
-GITHUB_REPO = os.environ.get("GITHUB_REPO", "")  # 格式: owner/repo
+GITHUB_REPO = os.environ.get("REPO_NAME", "")  # 格式: owner/repo
 
 # === RSS 源配置 ===
 RSS_SOURCES = {
