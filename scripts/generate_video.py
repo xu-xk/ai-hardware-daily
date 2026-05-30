@@ -208,9 +208,8 @@ def generate_video(daily: dict) -> str:
     img = str(output_dir / "01_overview.png")
     render_png(make_overview_html(daily, date), img)
     audio = str(output_dir / "01_overview.mp3")
-    summary = "；".join([c['title'] for c in cards[:6]])
-    generate_tts(f"各位晚上好，今天是{date_display}星期{weekday}。这是今日的AI和硬件领域大事。{summary}", audio)
-    segments.append((img, audio, get_audio_duration(audio) + 0.5))
+    generate_tts(f"各位晚上好，今天是{date_display}星期{weekday}，以下是今天的主要内容。", audio)
+    segments.append((img, audio, get_audio_duration(audio) + 1.5))
     
     # 进度条 HTML
     progress_html = '<div class="progress">' + ''.join(['<div class="seg" style="flex:1"></div>' for _ in range(len(cards))]) + '</div>'
@@ -222,7 +221,9 @@ def generate_video(daily: dict) -> str:
         img = str(output_dir / f"news_{i+1}.png")
         render_png(make_news_card_html(card, color, progress_html), img)
         audio = str(output_dir / f"news_{i+1}.mp3")
-        generate_tts(f"{card['title']}。{card.get('description', '')}", audio)
+        # 详细播报：标题 + 完整描述
+        full_desc = card.get('description', card['title'])
+        generate_tts(f"{card['title']}。{full_desc}", audio)
         segments.append((img, audio, get_audio_duration(audio) + 0.5))
     
     # 合成
