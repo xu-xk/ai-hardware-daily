@@ -63,22 +63,29 @@ def generate_html(daily: dict) -> str:
             print(f"LLM 输出: {len(html)} 字符 (尝试 {attempt+1}/3)")
 
             # 清理 markdown 代码块
-            if html.startswith("```"):
-                html = html.split("\n", 1)[1] if "\n" in html else html
-                if html.endswith("```"):
-                    html = html[:-3]
-                html = html.strip()
+            import re
+            # 移除开头的 ```html 或 ```
+            html = re.sub(r'^```(?:html)?\s*\n?', '', html)
+            html = re.sub(r'\n?```\s*$', '', html)
+            html = html.strip()
 
             # 提取纯 HTML（去掉 LLM 附加的解释文字）
-            import re
-            # 找到 <!DOCTYPE 或 <html 开始，到 </html> 结束
-            html_match = re.search(r'(<!DOCTYPE[^>]*>|<html[\s\S]*</html>)', html, re.IGNORECASE)
-            if html_match:
-                html = html_match.group(0)
-            elif '<html' in html.lower():
-                # 如果有 <html 但没有配对的 </html>，截取到末尾
-                idx = html.lower().index('<html')
-                html = html[idx:]
+            # 找到 <!DOCTYPE 或 <html 开始位置
+            doctype_match = re.search(r'<!DOCTYPE[^>]*>', html, re.IGNORECASE)
+            html_tag_match = re.search(r'<html[\s>]', html, re.IGNORECASE)
+            
+            start_idx = -1
+            if doctype_match:
+                start_idx = doctype_match.start()
+            elif html_tag_match:
+                start_idx = html_tag_match.start()
+            
+            if start_idx >= 0:
+                html = html[start_idx:]
+                # 找到最后一个 </html>
+                end_idx = html.rfind('</html>')
+                if end_idx >= 0:
+                    html = html[:end_idx + 7]
             
             # 验证是有效 HTML
             if "<html" in html.lower() or "<!doctype" in html.lower():
