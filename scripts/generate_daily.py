@@ -71,7 +71,18 @@ def generate_daily(items: list) -> dict:
                 raw_output = raw_output.strip()
 
             result = json.loads(raw_output)
-            break  # 解析成功，跳出重试
+            
+            # 验证 cards 不为空
+            cards = result.get('cards', [])
+            if not cards or len(cards) == 0:
+                print(f"[WARN] cards 为空 (尝试 {attempt+1}/3)，重试...")
+                if attempt < 2:
+                    continue
+                else:
+                    raise ValueError("LLM 返回的 cards 为空")
+            
+            print(f"解析成功: {len(cards)} 条新闻")
+            break
 
         except json.JSONDecodeError as e:
             print(f"[WARN] JSON 解析失败 (尝试 {attempt+1}/3): {e}")
@@ -80,6 +91,9 @@ def generate_daily(items: list) -> dict:
                 json_match = re.search(r'\{[\s\S]*\}', raw_output)
                 if json_match:
                     result = json.loads(json_match.group())
+                    cards = result.get('cards', [])
+                    if not cards or len(cards) == 0:
+                        raise ValueError("LLM 返回的 cards 为空")
                 else:
                     raise ValueError("无法从 LLM 输出中提取 JSON")
 
