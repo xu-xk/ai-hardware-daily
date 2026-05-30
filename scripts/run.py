@@ -17,8 +17,6 @@ sys.path.insert(0, str(Path(__file__).parent))
 from collect_rss import collect_all, mark_as_used
 from generate_daily import generate_daily
 from generate_card import generate_card
-from generate_cards import generate_all_cards
-from generate_audio import generate_all_audio
 from generate_video import generate_video
 from publish_issue import publish_issue
 from config import DATA_DIR
