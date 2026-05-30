@@ -93,9 +93,12 @@ def main():
     print("  Step 4: 生成视频")
     print("=" * 60)
     try:
-        card_paths = generate_all_cards(daily)
-        audio_paths = generate_all_audio(daily)
-        video_path = generate_video(daily, card_paths, audio_paths)
+        # 视频只取 top 5 新闻
+        video_daily = dict(daily)
+        video_daily['cards'] = daily.get('cards', [])[:5]
+        card_paths = generate_all_cards(video_daily)
+        audio_paths = generate_all_audio(video_daily)
+        video_path = generate_video(video_daily, card_paths, audio_paths)
         print(f"视频: {video_path}")
     except Exception as e:
         print(f"[WARN] 视频生成失败: {e}")
