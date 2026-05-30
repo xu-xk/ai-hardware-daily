@@ -100,6 +100,21 @@ def generate_daily(items: list) -> dict:
     # 确保日期字段
     result["date"] = datetime.now().strftime("%Y-%m-%d")
     
+    # 为每条新闻补充原始链接（LLM 不一定保留）
+    items_by_title = {}
+    for item in items:
+        key = item['title'].strip()[:20]
+        items_by_title[key] = item
+    
+    for card in result.get('cards', []):
+        card_title = card.get('title', '').strip()[:20]
+        # 模糊匹配原始新闻
+        for key, item in items_by_title.items():
+            if card_title in key or key in card_title:
+                card['link'] = item.get('link', '')
+                card['source'] = item.get('source', card.get('source', ''))
+                break
+    
     # 保存结果
     output_file = DATA_DIR / f"daily_{result['date']}.json"
     output_file.write_text(
