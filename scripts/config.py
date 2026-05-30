@@ -11,7 +11,7 @@ HISTORY_FILE = DATA_DIR / "history.json"
 
 # === DeepSeek API ===
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
-DEEPSEEK_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+DEEPSEEK_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "") or "https://api.deepseek.com"
 DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-flash")
 
 # === GitHub ===
