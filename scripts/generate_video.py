@@ -12,7 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from config import DATA_DIR, DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL
 from generate_card import render_png
-from fetch_screenshots import fetch_article_screenshot
+from fetch_images import extract_article_image, download_image
 from openai import OpenAI
 
 
@@ -251,17 +251,19 @@ def generate_video(daily: dict) -> str:
         color = colors[i % len(colors)]
         print(f"新闻 {i+1}/{len(cards)}: {card['title'][:25]}...")
         
-        # 抓取原文截图
+        # 抓取原文图片
         screenshot_path = None
         link = card.get('link', '')
         if link:
             try:
-                ss_path = str(screenshots_dir / f"news_{i+1}.png")
-                fetch_article_screenshot(link, ss_path)
-                if Path(ss_path).exists():
-                    screenshot_path = ss_path
+                img_url = extract_article_image(link)
+                if img_url:
+                    img_path = str(screenshots_dir / f"news_{i+1}.jpg")
+                    if download_image(img_url, img_path):
+                        screenshot_path = img_path
+                        print(f"  图片: {Path(img_path).stat().st_size / 1024:.0f}KB")
             except Exception as e:
-                print(f"  截图失败: {e}")
+                print(f"  图片失败: {e}")
         
         # LLM 生成分块内容
         short_desc = card.get('description', card['title'])
