@@ -12,6 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from config import DATA_DIR, DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL
 from generate_card import render_png
+from fetch_screenshots import fetch_article_screenshot
 from openai import OpenAI
 
 
@@ -128,8 +129,8 @@ body{{font-family:'Noto Sans SC',sans-serif;background:#fbf9f6;color:#333;min-he
 </body></html>'''
 
 
-def make_news_card_html(card: dict, accent_color: str = '#c96442', progress_html: str = '', content_blocks: list = None) -> str:
-    """单条新闻卡片（带进度条 + 分块内容）"""
+def make_news_card_html(card: dict, accent_color: str = '#c96442', progress_html: str = '', content_blocks: list = None, screenshot_path: str = None) -> str:
+    """单条新闻卡片（带进度条 + 分块内容 + 原文截图）"""
     title = card['title']
     category = card.get('category', '')
     
@@ -144,6 +145,14 @@ def make_news_card_html(card: dict, accent_color: str = '#c96442', progress_html
         desc = card.get('description', '')
         blocks_html = f'<div class="block"><div class="block-content">{desc}</div></div>'
     
+    # 截图 HTML
+    if screenshot_path and Path(screenshot_path).exists():
+        # 转为 file:// URL
+        img_url = 'file:///' + str(Path(screenshot_path).resolve()).replace('\\', '/')
+        screenshot_html = f'<div class="screenshot"><img src="{img_url}" alt="原文截图" /></div>'
+    else:
+        screenshot_html = ''
+    
     return f'''<!DOCTYPE html>
 <html><head><meta charset="UTF-8">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;600;700&display=swap" rel="stylesheet" />
@@ -154,22 +163,27 @@ body{{margin:0;display:flex;justify-content:center;align-items:center;min-height
 .progress{{display:flex;height:8px;width:100%}}
 .progress .seg{{height:100%}}
 .card-area{{flex:1;display:flex;justify-content:center;align-items:center;padding:40px}}
-.card{{width:1600px;background:#fff;border-radius:32px;border:1px solid #dad8d4;box-shadow:0 10px 30px -10px rgba(74,64,58,0.1);display:flex;overflow:hidden}}
+.card{{width:1700px;background:#fff;border-radius:32px;border:1px solid #dad8d4;box-shadow:0 10px 30px -10px rgba(74,64,58,0.1);display:flex;overflow:hidden}}
 .accent{{width:8px;background:{accent_color};flex-shrink:0}}
-.content{{flex:1;padding:48px 64px}}
-.tag{{display:inline-block;background:{accent_color};color:#fff;font-size:18px;font-weight:700;padding:5px 18px;border-radius:8px;margin-bottom:20px}}
-h2{{font-size:44px;font-weight:700;color:#2d2d2d;margin:0 0 28px;line-height:1.3}}
-.blocks{{display:flex;flex-direction:column;gap:16px}}
-.block{{padding:16px 20px;background:#faf9f6;border-radius:16px;border-left:4px solid {accent_color}}}
-.block-title{{font-size:22px;font-weight:700;color:{accent_color};margin-bottom:8px}}
-.block-content{{font-size:24px;color:#444;line-height:1.7}}
+.main{{flex:1;display:flex;padding:32px 40px;gap:32px}}
+.text-area{{flex:1;display:flex;flex-direction:column}}
+.tag{{display:inline-block;background:{accent_color};color:#fff;font-size:16px;font-weight:700;padding:4px 14px;border-radius:8px;margin-bottom:14px;align-self:flex-start}}
+h2{{font-size:36px;font-weight:700;color:#2d2d2d;margin:0 0 20px;line-height:1.3}}
+.blocks{{display:flex;flex-direction:column;gap:12px;flex:1}}
+.block{{padding:12px 16px;background:#faf9f6;border-radius:12px;border-left:4px solid {accent_color}}}
+.block-title{{font-size:18px;font-weight:700;color:{accent_color};margin-bottom:4px}}
+.block-content{{font-size:20px;color:#444;line-height:1.6}}
+.screenshot{{width:560px;flex-shrink:0;display:flex;align-items:center;justify-content:center}}
+.screenshot img{{max-width:100%;max-height:100%;border-radius:16px;border:1px solid #e8e6e2;object-fit:cover}}
 </style></head><body>
 <div class="page">
 {progress_html}
 <div class="card-area">
 <div class="card"><div class="accent"></div>
-<div class="content"><div class="tag">{category}</div><h2>{title}</h2><div class="blocks">{blocks_html}</div></div>
-</div></div></div></body></html>'''
+<div class="main">
+<div class="text-area"><div class="tag">{category}</div><h2>{title}</h2><div class="blocks">{blocks_html}</div></div>
+{screenshot_html}
+</div></div></div></div></body></html>'''
 
 
 def images_to_video(image_durations, output_path):
@@ -228,11 +242,26 @@ def generate_video(daily: dict) -> str:
     # 进度条 HTML
     progress_html = '<div class="progress">' + ''.join(['<div class="seg" style="flex:1"></div>' for _ in range(len(cards))]) + '</div>'
     
-    # 2. 逐条新闻（LLM 扩写描述）
+    # 2. 逐条新闻（LLM 扩写 + 原文截图）
     llm_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
+    screenshots_dir = DATA_DIR / f"screenshots_{date}"
+    screenshots_dir.mkdir(parents=True, exist_ok=True)
+    
     for i, card in enumerate(cards):
         color = colors[i % len(colors)]
         print(f"新闻 {i+1}/{len(cards)}: {card['title'][:25]}...")
+        
+        # 抓取原文截图
+        screenshot_path = None
+        link = card.get('link', '')
+        if link:
+            try:
+                ss_path = str(screenshots_dir / f"news_{i+1}.png")
+                fetch_article_screenshot(link, ss_path)
+                if Path(ss_path).exists():
+                    screenshot_path = ss_path
+            except Exception as e:
+                print(f"  截图失败: {e}")
         
         # LLM 生成分块内容
         short_desc = card.get('description', card['title'])
@@ -257,11 +286,11 @@ def generate_video(daily: dict) -> str:
         except:
             content_blocks = [{'subtitle': '详情', 'content': short_desc}]
         
-        # 生成卡片（分块内容）
+        # 生成卡片（分块内容 + 截图）
         img = str(output_dir / f"news_{i+1}.png")
-        render_png(make_news_card_html(card, color, progress_html, content_blocks), img)
+        render_png(make_news_card_html(card, color, progress_html, content_blocks, screenshot_path), img)
         
-        # TTS 播报（念标题 + 各块内容）
+        # TTS 播报
         tts_parts = [f"{card['title']}。"]
         for block in content_blocks:
             tts_parts.append(block.get('content', ''))
