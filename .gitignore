@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.env
+data/raw_*.json
+data/daily_*.json
+data/issue_preview_*.md
