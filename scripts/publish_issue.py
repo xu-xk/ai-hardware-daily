@@ -102,23 +102,38 @@ def publish_issue(daily: dict, dry_run: bool = False, card_path: str = None) -> 
     
     # 如果有卡片图，上传到 Issue 正文
     if card_path and Path(card_path).exists():
-        # 先上传图片到 GitHub
         with open(card_path, 'rb') as f:
             image_data = f.read()
         import base64
         date = daily.get('date', 'today')
         image_path = f"cards/{date}.png"
+        image_url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/{image_path}"
         try:
-            repo.create_file(
-                path=image_path,
-                message=f"card image for {date}",
-                content=image_data,
-            )
-            image_url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/{image_path}"
+            # 检查文件是否已存在
+            existing = None
+            try:
+                existing = repo.get_contents(image_path)
+            except Exception:
+                pass
+            
+            if existing:
+                repo.update_file(
+                    path=image_path,
+                    message=f"update card image for {date}",
+                    content=image_data,
+                    sha=existing.sha,
+                )
+            else:
+                repo.create_file(
+                    path=image_path,
+                    message=f"card image for {date}",
+                    content=image_data,
+                )
+            
             body = f"![日报卡片]({image_url})\n\n{body}"
             print(f"卡片图已上传: {image_url}")
         except Exception as e:
-            print(f"[WARN] 图片上传失败: {e}")
+            print(f"[WARN] 图片上传失败: {type(e).__name__}: {e}")
     
     issue = repo.create_issue(title=title, body=body)
     print(f"\n已发布 Issue: {issue.html_url}")
