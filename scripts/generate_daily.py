@@ -46,39 +46,42 @@ def generate_daily(items: list) -> dict:
     print(f"\n调用 LLM: {DEEPSEEK_MODEL}")
     print(f"输入新闻: {len(items)} 条")
 
-    response = client.chat.completions.create(
-        model=DEEPSEEK_MODEL,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt},
-        ],
-        temperature=0.3,
-        max_tokens=4000,
-    )
+    import re
 
-    raw_output = response.choices[0].message.content.strip()
-    print(f"LLM 输出: {len(raw_output)} 字符")
+    for attempt in range(3):
+        try:
+            response = client.chat.completions.create(
+                model=DEEPSEEK_MODEL,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.3,
+                max_tokens=8000,
+            )
 
-    # 解析 JSON（处理可能的 markdown 代码块包裹）
-    if raw_output.startswith("```"):
-        # 去掉 ```json 和 ```
-        raw_output = raw_output.split("\n", 1)[1] if "\n" in raw_output else raw_output
-        if raw_output.endswith("```"):
-            raw_output = raw_output[:-3]
-        raw_output = raw_output.strip()
+            raw_output = response.choices[0].message.content.strip()
+            print(f"LLM 输出: {len(raw_output)} 字符 (尝试 {attempt+1}/3)")
 
-    try:
-        result = json.loads(raw_output)
-    except json.JSONDecodeError as e:
-        print(f"[ERROR] JSON 解析失败: {e}")
-        print(f"原始输出前 500 字: {raw_output[:500]}")
-        # 尝试提取 JSON 部分
-        import re
-        json_match = re.search(r'\{[\s\S]*\}', raw_output)
-        if json_match:
-            result = json.loads(json_match.group())
-        else:
-            raise ValueError("无法从 LLM 输出中提取 JSON")
+            # 解析 JSON（处理可能的 markdown 代码块包裹）
+            if raw_output.startswith("```"):
+                raw_output = raw_output.split("\n", 1)[1] if "\n" in raw_output else raw_output
+                if raw_output.endswith("```"):
+                    raw_output = raw_output[:-3]
+                raw_output = raw_output.strip()
+
+            result = json.loads(raw_output)
+            break  # 解析成功，跳出重试
+
+        except json.JSONDecodeError as e:
+            print(f"[WARN] JSON 解析失败 (尝试 {attempt+1}/3): {e}")
+            if attempt == 2:
+                # 最后一次尝试：尝试提取 JSON 部分
+                json_match = re.search(r'\{[\s\S]*\}', raw_output)
+                if json_match:
+                    result = json.loads(json_match.group())
+                else:
+                    raise ValueError("无法从 LLM 输出中提取 JSON")
 
     # 确保日期字段
     result["date"] = datetime.now().strftime("%Y-%m-%d")

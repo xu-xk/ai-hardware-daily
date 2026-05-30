@@ -118,7 +118,7 @@ def parse_single_feed(source: dict, timeout: int = 15) -> list:
     return items
 
 
-def collect_all(hours: int = 48) -> list:
+def collect_all(hours: int = 48, max_per_source: int = 5, max_total: int = 30) -> list:
     """采集所有 RSS 源"""
     all_items = []
     history = load_history()
@@ -126,12 +126,15 @@ def collect_all(hours: int = 48) -> list:
     print(f"\n{'='*50}")
     print(f"  开始采集 RSS — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     print(f"  历史记录: {len(history)} 条")
+    print(f"  每源最多: {max_per_source} 条, 总计最多: {max_total} 条")
     print(f"{'='*50}\n")
 
     for group_name, sources in RSS_SOURCES.items():
         print(f"[{group_name}]")
         for source in sources:
             items = parse_single_feed(source)
+            # 每源最多取 max_per_source 条
+            items = items[:max_per_source]
             for item in items:
                 if item["hash"] not in history:
                     all_items.append(item)
@@ -148,6 +151,9 @@ def collect_all(hours: int = 48) -> list:
         if title_key not in seen_titles:
             seen_titles.add(title_key)
             unique_items.append(item)
+
+    # 限制总数
+    unique_items = unique_items[:max_total]
 
     print(f"\n采集完成: 原始 {len(all_items)} 条 → 去重后 {len(unique_items)} 条")
 
