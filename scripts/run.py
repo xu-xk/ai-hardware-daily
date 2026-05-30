@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from collect_rss import collect_all, mark_as_used
 from generate_daily import generate_daily
+from generate_card import generate_card
 from publish_issue import publish_issue
 from config import DATA_DIR
 
@@ -72,11 +73,22 @@ def main():
             sys.exit(1)
         daily = json.loads(daily_file.read_text(encoding="utf-8"))
 
-    # ── Step 3: 发布 ──
+    # ── Step 3: 生成卡片 ──
     print("\n" + "=" * 60)
-    print(f"  Step 3: 发布 Issue {'(正式)' if publish else '(预览)'}")
+    print("  Step 3: 生成卡片图")
     print("=" * 60)
-    result = publish_issue(daily, dry_run=not publish)
+    try:
+        png_path = generate_card(daily)
+        print(f"卡片图: {png_path}")
+    except Exception as e:
+        print(f"[WARN] 卡片生成失败: {e}")
+        png_path = None
+
+    # ── Step 4: 发布 ──
+    print("\n" + "=" * 60)
+    print(f"  Step 4: 发布 Issue {'(正式)' if publish else '(预览)'}")
+    print("=" * 60)
+    result = publish_issue(daily, dry_run=not publish, card_path=png_path)
 
     # ── 标记已使用 ──
     if publish:
