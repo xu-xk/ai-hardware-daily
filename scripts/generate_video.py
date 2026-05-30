@@ -1,21 +1,15 @@
 """
-视频生成 v3 — 橘鸦风格
+视频生成 v4 — 最终版
 结构：
-1. 片头："AI 早报"超大字 + 日期
-2. AI 总结页（卡片风格概览）
-3. 逐条 AI 新闻：标题卡 + 详情卡
-4. 硬件总结页
-5. 逐条硬件新闻：标题卡 + 详情卡
+1. 片头："AI 早报"超大字
+2. 资讯概览页（2×2 卡片网格）
+3. 逐条新闻（左侧色条卡片）
 """
-import json
-import sys
-import subprocess
-import os
+import json, sys, subprocess, os
 from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-
 from config import DATA_DIR, DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL
 from generate_card import render_png
 from openai import OpenAI
@@ -24,15 +18,13 @@ from openai import OpenAI
 def get_audio_duration(audio_path: str) -> float:
     cmd = ['ffprobe', '-v', 'quiet', '-show_entries', 'format=duration',
            '-of', 'default=noprint_wrappers=1:nokey=1', audio_path]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    return float(result.stdout.strip())
+    return float(subprocess.run(cmd, capture_output=True, text=True).stdout.strip())
 
 
 def generate_tts(text: str, output_path: str, voice: str = "zh-CN-YunxiNeural"):
     import asyncio, edge_tts
     async def _gen():
-        communicate = edge_tts.Communicate(text, voice)
-        await communicate.save(output_path)
+        await edge_tts.Communicate(text, voice).save(output_path)
     asyncio.run(_gen())
 
 
@@ -50,53 +42,97 @@ h1{{font-size:220px;font-weight:900;color:#c96442;margin:0 0 20px;line-height:1;
 </body></html>'''
 
 
-def make_summary_html(cards: list, title: str) -> str:
-    colors = ['#c96442', '#e09f3e', '#335c67', '#9e2a2b']
-    items = ''
-    for i, c in enumerate(cards[:6]):
-        color = colors[i % len(colors)]
-        short = c['title'][:8]
-        items += f'<div class="item"><span class="dot" style="background:{color}"></span><span class="txt">{short}</span></div>'
+def make_overview_html(daily: dict, date_str: str) -> str:
+    """生成资讯概览页"""
+    cards = daily.get('cards', [])
+    
+    # 按分类分组
+    categories = {}
+    for c in cards:
+        cat = c.get('category', '其他')
+        if cat not in categories:
+            categories[cat] = []
+        categories[cat].append(c)
+    
+    # 分类配置
+    cat_config = {
+        '要闻': {'color': 'c-orange', 'icon': '★', 'items': []},
+        'AI动态': {'color': 'c-orange', 'icon': '★', 'items': []},
+        '开发生态': {'color': 'c-yellow', 'icon': '</>', 'items': []},
+        '产品应用': {'color': 'c-blue', 'icon': '▦', 'items': []},
+        '行业动态': {'color': 'c-red', 'icon': '◎', 'items': []},
+        '前瞻传闻': {'color': 'c-orange', 'icon': '⚠', 'items': []},
+        '芯片硬件': {'color': 'c-red', 'icon': '◎', 'items': []},
+        '量子前沿': {'color': 'c-blue', 'icon': '▦', 'items': []},
+    }
+    
+    for cat, items in categories.items():
+        if cat in cat_config:
+            cat_config[cat]['items'] = items
+    
+    # 生成卡片 HTML
+    cards_html = ''
+    for cat_name, cfg in cat_config.items():
+        if not cfg['items']:
+            continue
+        li_html = ''.join([f'<li>{c["title"][:25]}</li>' for c in cfg['items'][:3]])
+        cards_html += f'''
+    <div class="card {cfg['color']}">
+      <div class="card-header"><span class="card-icon">{cfg['icon']}</span><span class="card-title">{cat_name}</span></div>
+      <ul class="card-list">{li_html}</ul>
+    </div>'''
+    
+    # 底部标签
+    tags = [c['title'][:6] for c in cards[:6]]
+    tags_html = ''.join([f'<span class="tag">{t}</span>' for t in tags])
+    
     return f'''<!DOCTYPE html>
 <html><head><meta charset="UTF-8">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;600;700&display=swap" rel="stylesheet" />
 <style>
-body{{margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;background:#fbf9f6;font-family:'Noto Sans SC',sans-serif}}
-.box{{text-align:center}}
-h1{{font-size:80px;font-weight:700;color:#c96442;margin:0 0 60px}}
-.list{{display:flex;flex-direction:column;gap:24px;align-items:center}}
-.item{{display:flex;align-items:center;gap:16px}}
-.dot{{width:12px;height:12px;border-radius:50%;flex-shrink:0}}
-.txt{{font-size:36px;font-weight:600;color:#4a403a}}
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:'Noto Sans SC',sans-serif;background:#fbf9f6;color:#333;min-height:100vh;display:flex;justify-content:center;align-items:center}}
+.page{{width:1920px;height:1080px;padding:40px 60px;display:flex;flex-direction:column}}
+.nav{{display:flex;gap:0;margin-bottom:32px}}
+.nav-item{{padding:10px 28px;font-size:20px;font-weight:600;border-radius:10px 10px 0 0}}
+.nav-item.active{{background:#c96442;color:#fff}}
+.nav-item:not(.active){{background:#fff;color:#666;border:1px solid #e5e5e5;border-bottom:none}}
+.title{{font-size:52px;font-weight:700;color:#c96442;text-align:center;margin-bottom:28px}}
+.grid{{display:grid;grid-template-columns:1fr 1fr;gap:16px;flex:1}}
+.card{{background:#fff;border-radius:20px;padding:24px 28px;border:1px solid #e8e6e2;box-shadow:0 4px 16px -4px rgba(74,64,58,0.06)}}
+.card-header{{display:flex;align-items:center;gap:10px;margin-bottom:14px}}
+.card-icon{{font-size:28px;font-weight:700}}
+.card-title{{font-size:22px;font-weight:700}}
+.card-list{{list-style:none;padding:0}}
+.card-list li{{font-size:17px;line-height:1.7;color:#555;padding:3px 0;padding-left:16px;position:relative}}
+.card-list li::before{{content:'';position:absolute;left:0;top:11px;width:8px;height:8px;border-radius:50%}}
+.c-orange .card-icon,.c-orange .card-title{{color:#c96442}}.c-orange .card-list li::before{{background:#c96442}}
+.c-yellow .card-icon,.c-yellow .card-title{{color:#e09f3e}}.c-yellow .card-list li::before{{background:#e09f3e}}
+.c-blue .card-icon,.c-blue .card-title{{color:#335c67}}.c-blue .card-list li::before{{background:#335c67}}
+.c-red .card-icon,.c-red .card-title{{color:#9e2a2b}}.c-red .card-list li::before{{background:#9e2a2b}}
+.footer-bar{{margin-top:auto;text-align:center;padding:14px;background:rgba(45,45,45,0.85);border-radius:14px;color:#fff;font-size:18px;font-weight:600;letter-spacing:2px}}
+.tags{{display:flex;justify-content:center;gap:12px;margin-top:14px;flex-wrap:wrap}}
+.tag{{background:#f0efeb;padding:6px 16px;border-radius:8px;font-size:14px;color:#888;font-weight:600}}
 </style></head><body>
-<div class="box"><h1>{title}</h1><div class="list">{items}</div></div>
+<div class="page">
+  <div class="nav">
+    <div class="nav-item active">Intro</div>
+    <div class="nav-item">要闻</div><div class="nav-item">开发生态</div>
+    <div class="nav-item">产品应用</div><div class="nav-item">行业动态</div><div class="nav-item">前瞻与传闻</div>
+  </div>
+  <div class="title">{date_str} 资讯概览</div>
+  <div class="grid">{cards_html}</div>
+  <div class="footer-bar">今天是 {date_str}</div>
+  <div class="tags">{tags_html}</div>
+</div>
 </body></html>'''
 
 
-def make_title_card_html(card: dict, tag_color: str = '#c96442') -> str:
+def make_news_card_html(card: dict, accent_color: str = '#c96442') -> str:
+    """单条新闻卡片"""
     title = card['title']
-    desc = card.get('description', '')[:80]
-    category = card.get('category', '要闻')
-    return f'''<!DOCTYPE html>
-<html><head><meta charset="UTF-8">
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;600;700&display=swap" rel="stylesheet" />
-<style>
-body{{margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;background:#fbf9f6;font-family:'Noto Sans SC',sans-serif}}
-.card{{width:1600px;background:#fff;border-radius:32px;border:1px solid #dad8d4;box-shadow:0 10px 30px -10px rgba(74,64,58,0.1);display:flex;overflow:hidden}}
-.accent{{width:8px;background:{tag_color};flex-shrink:0}}
-.content{{flex:1;padding:60px 80px}}
-.tag{{display:inline-block;background:{tag_color};color:#fff;font-size:20px;font-weight:700;padding:6px 20px;border-radius:8px;margin-bottom:24px}}
-h2{{font-size:56px;font-weight:700;color:#2d2d2d;margin:0 0 20px;line-height:1.3}}
-.desc{{font-size:28px;color:#666;line-height:1.6}}
-</style></head><body>
-<div class="card"><div class="accent"></div>
-<div class="content"><div class="tag">{category}</div><h2>{title}</h2><div class="desc">{desc}</div></div>
-</div></body></html>'''
-
-
-def make_detail_html(card: dict, accent_color: str = '#335c67') -> str:
-    title = card['title'][:20]
-    desc = card.get('description', '')
+    desc = card.get('description', '')[:100]
+    category = card.get('category', '')
     return f'''<!DOCTYPE html>
 <html><head><meta charset="UTF-8">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;600;700&display=swap" rel="stylesheet" />
@@ -105,75 +141,59 @@ body{{margin:0;display:flex;justify-content:center;align-items:center;min-height
 .card{{width:1600px;background:#fff;border-radius:32px;border:1px solid #dad8d4;box-shadow:0 10px 30px -10px rgba(74,64,58,0.1);display:flex;overflow:hidden}}
 .accent{{width:8px;background:{accent_color};flex-shrink:0}}
 .content{{flex:1;padding:60px 80px}}
-h3{{font-size:36px;font-weight:700;color:{accent_color};margin:0 0 32px}}
-p{{font-size:26px;color:#444;line-height:1.8;margin:0 0 16px}}
-p strong{{color:#c96442}}
+.tag{{display:inline-block;background:{accent_color};color:#fff;font-size:20px;font-weight:700;padding:6px 20px;border-radius:8px;margin-bottom:24px}}
+h2{{font-size:56px;font-weight:700;color:#2d2d2d;margin:0 0 20px;line-height:1.3}}
+.desc{{font-size:28px;color:#666;line-height:1.6}}
 </style></head><body>
 <div class="card"><div class="accent"></div>
-<div class="content"><h3>关键信息</h3><p>{desc}</p></div>
+<div class="content"><div class="tag">{category}</div><h2>{title}</h2><div class="desc">{desc}</div></div>
 </div></body></html>'''
 
 
-def images_to_video(image_durations: list, output_path: str):
-    concat_content = ""
-    for img_path, duration in image_durations:
-        concat_content += f"file '{img_path}'\n"
-        concat_content += f"duration {duration:.2f}\n"
-    concat_content += f"file '{image_durations[-1][0]}'\n"
-    
-    concat_file = output_path + ".concat.txt"
-    with open(concat_file, 'w', encoding='utf-8') as f:
-        f.write(concat_content)
-    
-    temp_video = output_path + ".temp.mp4"
-    subprocess.run(['ffmpeg', '-y', '-f', 'concat', '-safe', '0', '-i', concat_file,
-                    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-r', '25', temp_video], capture_output=True)
-    return temp_video, concat_file
+def images_to_video(image_durations, output_path):
+    concat = ""
+    for img, dur in image_durations:
+        concat += f"file '{img}'\nduration {dur:.2f}\n"
+    concat += f"file '{image_durations[-1][0]}'\n"
+    cf = output_path + ".concat.txt"
+    with open(cf, 'w', encoding='utf-8') as f: f.write(concat)
+    tv = output_path + ".temp.mp4"
+    subprocess.run(['ffmpeg','-y','-f','concat','-safe','0','-i',cf,'-c:v','libx264','-pix_fmt','yuv420p','-r','25',tv], capture_output=True)
+    return tv, cf
 
 
-def merge_audio(audio_paths: list, output_path: str):
-    concat_content = ""
-    silence_files = []
-    for i, audio_path in enumerate(audio_paths):
-        concat_content += f"file '{audio_path}'\n"
+def merge_audio(audio_paths, output_path):
+    concat = ""
+    silences = []
+    for i, ap in enumerate(audio_paths):
+        concat += f"file '{ap}'\n"
         if i < len(audio_paths) - 1:
-            silence_path = output_path + f".silence_{i}.mp3"
-            subprocess.run(['ffmpeg', '-y', '-f', 'lavfi', '-i', 'anullsrc=r=24000:cl=mono',
-                           '-t', '0.5', '-q:a', '9', '-acodec', 'libmp3lame', silence_path], capture_output=True)
-            concat_content += f"file '{silence_path}'\n"
-            silence_files.append(silence_path)
-    
-    concat_file = output_path + ".concat.txt"
-    with open(concat_file, 'w', encoding='utf-8') as f:
-        f.write(concat_content)
-    
-    subprocess.run(['ffmpeg', '-y', '-f', 'concat', '-safe', '0', '-i', concat_file,
-                    '-acodec', 'libmp3lame', '-b:a', '192k', output_path], capture_output=True)
-    
-    for sf in silence_files:
-        Path(sf).unlink(missing_ok=True)
-    Path(concat_file).unlink(missing_ok=True)
+            sp = output_path + f".s{i}.mp3"
+            subprocess.run(['ffmpeg','-y','-f','lavfi','-i','anullsrc=r=24000:cl=mono','-t','0.5','-q:a','9','-acodec','libmp3lame',sp], capture_output=True)
+            concat += f"file '{sp}'\n"
+            silences.append(sp)
+    cf = output_path + ".concat.txt"
+    with open(cf, 'w', encoding='utf-8') as f: f.write(concat)
+    subprocess.run(['ffmpeg','-y','-f','concat','-safe','0','-i',cf,'-acodec','libmp3lame','-b:a','192k',output_path], capture_output=True)
+    for s in silences: Path(s).unlink(missing_ok=True)
+    Path(cf).unlink(missing_ok=True)
 
 
 def generate_video(daily: dict) -> str:
     date = daily.get("date", datetime.now().strftime("%Y-%m-%d"))
     cards = daily.get("cards", [])
-    if not cards:
-        raise ValueError("日报没有新闻内容")
-    
-    ai_cards = [c for c in cards if c.get('category') in ['要闻', 'AI动态', '开发生态', '行业动态', '前瞻传闻']]
-    hw_cards = [c for c in cards if c.get('category') in ['芯片硬件', '量子前沿']]
-    if not ai_cards: ai_cards = cards[:5]
-    if not hw_cards: hw_cards = cards[5:8] if len(cards) > 5 else []
+    if not cards: raise ValueError("没有新闻")
     
     output_dir = DATA_DIR / f"video_{date}"
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    all_segments = []
+    segments = []
     weekday_map = {0:'一',1:'二',2:'三',3:'四',4:'五',5:'六',6:'日'}
     dt = datetime.strptime(date, "%Y-%m-%d")
     weekday = weekday_map[dt.weekday()]
     date_display = f"{dt.month}月{dt.day}号"
+    
+    colors = ['#c96442', '#e09f3e', '#335c67', '#9e2a2b']
     
     # 1. 片头
     print("片头...")
@@ -181,88 +201,48 @@ def generate_video(daily: dict) -> str:
     render_png(make_title_html(date_display, f"星期{weekday}"), img)
     audio = str(output_dir / "00_title.mp3")
     generate_tts(f"各位晚上好，今天是{date_display}星期{weekday}", audio)
-    all_segments.append((img, audio, get_audio_duration(audio) + 1.0))
+    segments.append((img, audio, get_audio_duration(audio) + 1.0))
     
-    # 2. AI 总结
-    print("AI 总结...")
-    img = str(output_dir / "01_ai_summary.png")
-    render_png(make_summary_html(ai_cards, "今日 AI 大事"), img)
-    audio = str(output_dir / "01_ai_summary.mp3")
-    summary_text = "；".join([c['title'] for c in ai_cards[:5]])
-    generate_tts(f"这是今日的AI大事。{summary_text}", audio)
-    all_segments.append((img, audio, get_audio_duration(audio) + 0.5))
+    # 2. 资讯概览
+    print("概览页...")
+    img = str(output_dir / "01_overview.png")
+    render_png(make_overview_html(daily, date), img)
+    audio = str(output_dir / "01_overview.mp3")
+    summary = "；".join([c['title'] for c in cards[:6]])
+    generate_tts(f"这是今日的AI和硬件领域大事。{summary}", audio)
+    segments.append((img, audio, get_audio_duration(audio) + 0.5))
     
-    # 3. AI 新闻（每条：标题卡 + 详情卡）
-    colors = ['#c96442', '#e09f3e', '#335c67', '#9e2a2b']
-    for i, card in enumerate(ai_cards):
+    # 3. 逐条新闻
+    for i, card in enumerate(cards):
         color = colors[i % len(colors)]
-        print(f"AI {i+1}/{len(ai_cards)}: {card['title'][:25]}...")
-        
-        # 标题卡
-        img = str(output_dir / f"ai_{i+1}_title.png")
-        render_png(make_title_card_html(card, color), img)
-        audio = str(output_dir / f"ai_{i+1}_title.mp3")
-        generate_tts(card['title'], audio)
-        all_segments.append((img, audio, get_audio_duration(audio) + 0.5))
-        
-        # 详情卡
-        img = str(output_dir / f"ai_{i+1}_detail.png")
-        render_png(make_detail_html(card, color), img)
-        audio = str(output_dir / f"ai_{i+1}_detail.mp3")
-        generate_tts(card.get('description', card['title']), audio)
-        all_segments.append((img, audio, get_audio_duration(audio) + 0.5))
-    
-    # 4. 硬件
-    if hw_cards:
-        print("硬件总结...")
-        img = str(output_dir / "02_hw_summary.png")
-        render_png(make_summary_html(hw_cards, "硬件前沿"), img)
-        audio = str(output_dir / "02_hw_summary.mp3")
-        hw_text = "；".join([c['title'] for c in hw_cards])
-        generate_tts(f"接下来是硬件领域的重要进展。{hw_text}", audio)
-        all_segments.append((img, audio, get_audio_duration(audio) + 0.5))
-        
-        for i, card in enumerate(hw_cards):
-            color = colors[i % len(colors)]
-            print(f"硬件 {i+1}/{len(hw_cards)}: {card['title'][:25]}...")
-            
-            img = str(output_dir / f"hw_{i+1}_title.png")
-            render_png(make_title_card_html(card, color), img)
-            audio = str(output_dir / f"hw_{i+1}_title.mp3")
-            generate_tts(card['title'], audio)
-            all_segments.append((img, audio, get_audio_duration(audio) + 0.5))
-            
-            img = str(output_dir / f"hw_{i+1}_detail.png")
-            render_png(make_detail_html(card, color), img)
-            audio = str(output_dir / f"hw_{i+1}_detail.mp3")
-            generate_tts(card.get('description', card['title']), audio)
-            all_segments.append((img, audio, get_audio_duration(audio) + 0.5))
+        print(f"新闻 {i+1}/{len(cards)}: {card['title'][:25]}...")
+        img = str(output_dir / f"news_{i+1}.png")
+        render_png(make_news_card_html(card, color), img)
+        audio = str(output_dir / f"news_{i+1}.mp3")
+        generate_tts(f"{card['title']}。{card.get('description', '')}", audio)
+        segments.append((img, audio, get_audio_duration(audio) + 0.5))
     
     # 合成
-    print(f"\n合成视频: {len(all_segments)} 片段...")
-    image_durations = [(s[0], s[2]) for s in all_segments]
-    temp_video, concat_file = images_to_video(image_durations, str(output_dir / f"daily_{date}.mp4"))
+    print(f"\n合成: {len(segments)} 片段...")
+    ids = [(s[0], s[2]) for s in segments]
+    tv, cf = images_to_video(ids, str(output_dir / f"daily_{date}.mp4"))
+    ma = str(output_dir / f"daily_{date}_audio.mp3")
+    merge_audio([s[1] for s in segments], ma)
     
-    merged_audio = str(output_dir / f"daily_{date}_audio.mp3")
-    merge_audio([s[1] for s in all_segments], merged_audio)
+    final = DATA_DIR / f"daily_{date}.mp4"
+    r = subprocess.run(['ffmpeg','-y','-i',tv,'-i',ma,'-c:v','copy','-c:a','aac','-b:a','192k','-shortest',str(final)], capture_output=True, text=True)
+    if r.returncode != 0:
+        print(f"Error: {r.stderr[:300]}")
+        raise RuntimeError("合成失败")
     
-    final_video = DATA_DIR / f"daily_{date}.mp4"
-    result = subprocess.run(['ffmpeg', '-y', '-i', temp_video, '-i', merged_audio,
-                            '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-shortest', str(final_video)],
-                           capture_output=True, text=True)
+    Path(tv).unlink(missing_ok=True)
+    Path(cf).unlink(missing_ok=True)
+    Path(ma).unlink(missing_ok=True)
     
-    if result.returncode != 0:
-        print(f"FFmpeg error: {result.stderr[:300]}")
-        raise RuntimeError("视频合成失败")
-    
-    Path(temp_video).unlink(missing_ok=True)
-    Path(concat_file).unlink(missing_ok=True)
-    Path(merged_audio).unlink(missing_ok=True)
-    
-    duration = get_audio_duration(str(final_video))
-    size = final_video.stat().st_size
-    print(f"\n完成: {final_video} | {duration:.1f}s | {size/1024/1024:.1f}MB")
-    return str(final_video)
+    dur = get_audio_duration(str(final))
+    sz = final.stat().st_size
+    print(f"完成: {final} | {dur:.1f}s | {sz/1024/1024:.1f}MB")
+    return str(final)
 
 
 if __name__ == "__main__":
