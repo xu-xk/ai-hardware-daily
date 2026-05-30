@@ -17,6 +17,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 from collect_rss import collect_all, mark_as_used
 from generate_daily import generate_daily
 from generate_card import generate_card
+from generate_cards import generate_all_cards
+from generate_audio import generate_all_audio
+from generate_video import generate_video
 from publish_issue import publish_issue
 from config import DATA_DIR
 
@@ -73,20 +76,33 @@ def main():
             sys.exit(1)
         daily = json.loads(daily_file.read_text(encoding="utf-8"))
 
-    # ── Step 3: 生成卡片 ──
+    # ── Step 3: 生成封面卡片 ──
     print("\n" + "=" * 60)
-    print("  Step 3: 生成卡片图")
+    print("  Step 3: 生成封面卡片")
     print("=" * 60)
     try:
         png_path = generate_card(daily)
-        print(f"卡片图: {png_path}")
+        print(f"封面卡片: {png_path}")
     except Exception as e:
-        print(f"[WARN] 卡片生成失败: {e}")
+        print(f"[WARN] 封面卡片生成失败: {e}")
         png_path = None
 
-    # ── Step 4: 发布 ──
+    # ── Step 4: 生成多卡片 + 音频 + 视频 ──
+    video_path = None
     print("\n" + "=" * 60)
-    print(f"  Step 4: 发布 Issue {'(正式)' if publish else '(预览)'}")
+    print("  Step 4: 生成视频")
+    print("=" * 60)
+    try:
+        card_paths = generate_all_cards(daily)
+        audio_paths = generate_all_audio(daily)
+        video_path = generate_video(daily, card_paths, audio_paths)
+        print(f"视频: {video_path}")
+    except Exception as e:
+        print(f"[WARN] 视频生成失败: {e}")
+
+    # ── Step 5: 发布 ──
+    print("\n" + "=" * 60)
+    print(f"  Step 5: 发布 Issue {'(正式)' if publish else '(预览)'}")
     print("=" * 60)
     result = publish_issue(daily, dry_run=not publish, card_path=png_path)
 
