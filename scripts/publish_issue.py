@@ -82,7 +82,7 @@ def format_issue_markdown(daily: dict) -> tuple:
     return title, "\n".join(lines)
 
 
-def publish_issue(daily: dict, dry_run: bool = False) -> str:
+def publish_issue(daily: dict, dry_run: bool = False, card_path: str = None) -> str:
     """发布 GitHub Issue"""
     title, body = format_issue_markdown(daily)
     
@@ -99,6 +99,26 @@ def publish_issue(daily: dict, dry_run: bool = False) -> str:
 
     g = Github(GITHUB_TOKEN)
     repo = g.get_repo(GITHUB_REPO)
+    
+    # 如果有卡片图，上传到 Issue 正文
+    if card_path and Path(card_path).exists():
+        # 先上传图片到 GitHub
+        with open(card_path, 'rb') as f:
+            image_data = f.read()
+        import base64
+        date = daily.get('date', 'today')
+        image_path = f"cards/{date}.png"
+        try:
+            repo.create_file(
+                path=image_path,
+                message=f"card image for {date}",
+                content=image_data,
+            )
+            image_url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/{image_path}"
+            body = f"![日报卡片]({image_url})\n\n{body}"
+            print(f"卡片图已上传: {image_url}")
+        except Exception as e:
+            print(f"[WARN] 图片上传失败: {e}")
     
     issue = repo.create_issue(title=title, body=body)
     print(f"\n已发布 Issue: {issue.html_url}")
