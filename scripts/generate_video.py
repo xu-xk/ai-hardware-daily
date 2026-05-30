@@ -131,7 +131,7 @@ body{{font-family:'Noto Sans SC',sans-serif;background:#fbf9f6;color:#333;min-he
 def make_news_card_html(card: dict, accent_color: str = '#c96442', progress_html: str = '') -> str:
     """单条新闻卡片（带顶部进度条）"""
     title = card['title']
-    desc = card.get('description', '')[:100]
+    desc = card.get('description', card['title'])
     category = card.get('category', '')
     return f'''<!DOCTYPE html>
 <html><head><meta charset="UTF-8">
@@ -214,16 +214,37 @@ def generate_video(daily: dict) -> str:
     # 进度条 HTML
     progress_html = '<div class="progress">' + ''.join(['<div class="seg" style="flex:1"></div>' for _ in range(len(cards))]) + '</div>'
     
-    # 2. 逐条新闻
+    # 2. 逐条新闻（LLM 扩写描述）
+    llm_client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url=DEEPSEEK_BASE_URL)
     for i, card in enumerate(cards):
         color = colors[i % len(colors)]
         print(f"新闻 {i+1}/{len(cards)}: {card['title'][:25]}...")
+        
+        # LLM 扩写描述
+        short_desc = card.get('description', card['title'])
+        try:
+            resp = llm_client.chat.completions.create(
+                model=DEEPSEEK_MODEL,
+                messages=[{
+                    "role": "user",
+                    "content": f"用中文写一段100-150字的科技新闻播报稿，语言流畅适合口播。不要标题，直接写内容。主题：{card['title']}。原始信息：{short_desc}"
+                }],
+                temperature=0.5,
+                max_tokens=300,
+            )
+            detailed_desc = resp.choices[0].message.content.strip()
+        except:
+            detailed_desc = short_desc
+        
+        # 生成卡片（显示详细内容）
+        card_expanded = dict(card)
+        card_expanded['description'] = detailed_desc
         img = str(output_dir / f"news_{i+1}.png")
-        render_png(make_news_card_html(card, color, progress_html), img)
+        render_png(make_news_card_html(card_expanded, color, progress_html), img)
+        
+        # TTS 详细播报
         audio = str(output_dir / f"news_{i+1}.mp3")
-        # 详细播报：标题 + 完整描述
-        full_desc = card.get('description', card['title'])
-        generate_tts(f"{card['title']}。{full_desc}", audio)
+        generate_tts(f"{card['title']}。{detailed_desc}", audio)
         segments.append((img, audio, get_audio_duration(audio) + 0.5))
     
     # 合成
