@@ -34,13 +34,12 @@ def generate_title_html(date: str, weekday: str) -> str:
 <html>
 <head>
 <meta charset="UTF-8">
-<script src="https://cdn.tailwindcss.com"></script>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap" rel="stylesheet" />
 <style>
 body {{ margin:0; display:flex; justify-content:center; align-items:center; min-height:100vh; background:#fbf9f6; font-family:'Nunito',sans-serif; }}
 .container {{ text-align:center; }}
-h1 {{ font-size:120px; font-weight:700; color:#c96442; text-shadow:2px 2px 0 rgba(201,100,66,0.1); margin-bottom:40px; }}
-.date {{ font-size:48px; color:#4a403a; font-weight:600; }}
+h1 {{ font-size:160px; font-weight:700; color:#c96442; margin:0 0 30px 0; line-height:1.1; letter-spacing:6px; }}
+.date {{ font-size:28px; color:#bbb; font-weight:400; letter-spacing:3px; }}
 </style>
 </head>
 <body>
@@ -52,25 +51,56 @@ h1 {{ font-size:120px; font-weight:700; color:#c96442; text-shadow:2px 2px 0 rgb
 </html>'''
 
 
-def generate_summary_html(summary: str, category: str) -> str:
-    """生成总结页 HTML"""
+def generate_summary_html(cards: list, category: str) -> str:
+    """生成总结页 HTML（卡片风格）"""
+    icons = ['memory', 'data_center', 'speed', 'smart_toy', 'science', 'analytics', 'rocket_launch', 'build']
+    colors = ['#c96442', '#e09f3e', '#335c67', '#9e2a2b']
+    
+    cards_html = ''
+    for i, card in enumerate(cards[:6]):
+        icon = card.get('icon', icons[i % len(icons)])
+        color = colors[i % len(colors)]
+        title = card['title'][:8]  # 短标题
+        desc = card['title']  # 完整标题作为描述
+        cards_html += f'''
+<div class="card-item">
+<div class="title-box"><span class="material-symbols-rounded icon" style="color:{color}">{icon}</span><span class="card-title" style="color:{color}">{title}</span></div>
+<div class="card-body"><p class="card-desc">{desc}</p></div>
+</div>'''
+    
     return f'''<!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
-<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,300,0,0&display=swap" rel="stylesheet" />
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap" rel="stylesheet" />
 <style>
-body {{ margin:0; display:flex; justify-content:center; align-items:center; min-height:100vh; background:#fbf9f6; font-family:'Nunito',sans-serif; }}
-.container {{ max-width:1600px; padding:80px; text-align:center; }}
-h1 {{ font-size:80px; font-weight:700; color:#c96442; margin-bottom:60px; }}
-.summary {{ font-size:42px; color:#4a403a; line-height:1.8; font-weight:600; }}
+*, ::before, ::after {{ box-sizing:border-box; }}
+html, body {{ height:100%; }}
+body {{ margin:0; display:flex; justify-content:center; align-items:center; min-height:100vh; background:#fbf9f6; font-family:'Nunito',sans-serif; color:#4a403a; }}
+.main-container {{ background:#fbf9f6; }}
+.content-wrapper {{ width:1920px; height:1080px; display:flex; flex-direction:column; justify-content:center; align-items:center; padding:0 96px; }}
+.title-zone {{ margin-bottom:48px; }}
+h1 {{ font-size:64px; font-weight:700; color:#c96442; text-shadow:2px 2px 0 rgba(201,100,66,0.1); }}
+.card-zone {{ width:100%; }}
+.cards-container {{ display:flex; flex-wrap:wrap; justify-content:center; gap:20px; }}
+.card-item {{ width:calc(33.33% - 14px); padding:8px; background:#fff; border-radius:32px; border:1px solid rgb(218,216,212); box-shadow:0 10px 30px -10px rgba(74,64,58,0.1); display:flex; flex-direction:column; }}
+.title-box {{ display:flex; align-items:center; gap:8px; padding:20px 20px 8px; }}
+.title-box .icon {{ font-size:48px; }}
+.card-title {{ font-size:28px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
+.card-body {{ padding:0 20px 20px; }}
+.card-desc {{ font-size:22px; font-weight:600; line-height:1.6; color:#4a403a; }}
 </style>
 </head>
 <body>
-<div class="container">
-<h1>{category}</h1>
-<div class="summary">{summary}</div>
+<div class="main-container">
+<div class="content-wrapper">
+<div class="title-zone"><h1>{category}</h1></div>
+<div class="card-zone">
+<div class="cards-container">{cards_html}
+</div>
+</div>
+</div>
 </div>
 </body>
 </html>'''
@@ -219,13 +249,13 @@ def generate_video(daily: dict) -> str:
     
     # === 2. AI 大事总结 ===
     print("生成 AI 总结页...")
-    ai_summary = "；".join([c['title'] for c in ai_cards[:5]])
-    summary_html = generate_summary_html(ai_summary, "今日 AI 大事")
+    summary_html = generate_summary_html(ai_cards, "今日 AI 大事")
     summary_img = str(output_dir / "01_ai_summary.png")
     render_png(summary_html, summary_img)
     
+    ai_summary_text = "；".join([c['title'] for c in ai_cards[:5]])
     summary_audio = str(output_dir / "01_ai_summary.mp3")
-    generate_tts(f"这是今日的AI大事。{ai_summary}", summary_audio)
+    generate_tts(f"这是今日的AI大事。{ai_summary_text}", summary_audio)
     summary_duration = get_audio_duration(summary_audio) + 0.5
     all_segments.append((summary_img, summary_audio, summary_duration))
     
@@ -245,13 +275,13 @@ def generate_video(daily: dict) -> str:
     # === 4. 硬件过渡 ===
     if hw_cards:
         print("生成硬件总结页...")
-        hw_summary = "；".join([c['title'] for c in hw_cards])
-        hw_summary_html = generate_summary_html(hw_summary, "硬件前沿")
+        hw_summary_html = generate_summary_html(hw_cards, "硬件前沿")
         hw_summary_img = str(output_dir / "02_hw_summary.png")
         render_png(hw_summary_html, hw_summary_img)
         
+        hw_summary_text = "；".join([c['title'] for c in hw_cards])
         hw_summary_audio = str(output_dir / "02_hw_summary.mp3")
-        generate_tts(f"接下来是硬件领域的重要进展。{hw_summary}", hw_summary_audio)
+        generate_tts(f"接下来是硬件领域的重要进展。{hw_summary_text}", hw_summary_audio)
         hw_summary_duration = get_audio_duration(hw_summary_audio) + 0.5
         all_segments.append((hw_summary_img, hw_summary_audio, hw_summary_duration))
         
