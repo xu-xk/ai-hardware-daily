@@ -128,8 +128,8 @@ body{{font-family:'Noto Sans SC',sans-serif;background:#fbf9f6;color:#333;min-he
 </body></html>'''
 
 
-def make_news_card_html(card: dict, accent_color: str = '#c96442') -> str:
-    """单条新闻卡片"""
+def make_news_card_html(card: dict, accent_color: str = '#c96442', progress_html: str = '') -> str:
+    """单条新闻卡片（带顶部进度条）"""
     title = card['title']
     desc = card.get('description', '')[:100]
     category = card.get('category', '')
@@ -137,7 +137,12 @@ def make_news_card_html(card: dict, accent_color: str = '#c96442') -> str:
 <html><head><meta charset="UTF-8">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;600;700&display=swap" rel="stylesheet" />
 <style>
+*{{box-sizing:border-box;margin:0;padding:0}}
 body{{margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;background:#fbf9f6;font-family:'Noto Sans SC',sans-serif}}
+.page{{width:1920px;height:1080px;display:flex;flex-direction:column}}
+.progress{{display:flex;height:8px;width:100%}}
+.progress .seg{{height:100%}}
+.card-area{{flex:1;display:flex;justify-content:center;align-items:center;padding:40px}}
 .card{{width:1600px;background:#fff;border-radius:32px;border:1px solid #dad8d4;box-shadow:0 10px 30px -10px rgba(74,64,58,0.1);display:flex;overflow:hidden}}
 .accent{{width:8px;background:{accent_color};flex-shrink:0}}
 .content{{flex:1;padding:60px 80px}}
@@ -145,9 +150,12 @@ body{{margin:0;display:flex;justify-content:center;align-items:center;min-height
 h2{{font-size:56px;font-weight:700;color:#2d2d2d;margin:0 0 20px;line-height:1.3}}
 .desc{{font-size:28px;color:#666;line-height:1.6}}
 </style></head><body>
+<div class="page">
+{progress_html}
+<div class="card-area">
 <div class="card"><div class="accent"></div>
 <div class="content"><div class="tag">{category}</div><h2>{title}</h2><div class="desc">{desc}</div></div>
-</div></body></html>'''
+</div></div></div></body></html>'''
 
 
 def images_to_video(image_durations, output_path):
@@ -195,29 +203,24 @@ def generate_video(daily: dict) -> str:
     
     colors = ['#c96442', '#e09f3e', '#335c67', '#9e2a2b']
     
-    # 1. 片头
-    print("片头...")
-    img = str(output_dir / "00_title.png")
-    render_png(make_title_html(date_display, f"星期{weekday}"), img)
-    audio = str(output_dir / "00_title.mp3")
-    generate_tts(f"各位晚上好，今天是{date_display}星期{weekday}", audio)
-    segments.append((img, audio, get_audio_duration(audio) + 1.0))
-    
-    # 2. 资讯概览
-    print("概览页...")
+    # 1. 资讯概览（直接当片头）
+    print("概览页（片头）...")
     img = str(output_dir / "01_overview.png")
     render_png(make_overview_html(daily, date), img)
     audio = str(output_dir / "01_overview.mp3")
     summary = "；".join([c['title'] for c in cards[:6]])
-    generate_tts(f"这是今日的AI和硬件领域大事。{summary}", audio)
+    generate_tts(f"各位晚上好，今天是{date_display}星期{weekday}。这是今日的AI和硬件领域大事。{summary}", audio)
     segments.append((img, audio, get_audio_duration(audio) + 0.5))
     
-    # 3. 逐条新闻
+    # 进度条 HTML
+    progress_html = '<div class="progress">' + ''.join(['<div class="seg" style="flex:1"></div>' for _ in range(len(cards))]) + '</div>'
+    
+    # 2. 逐条新闻
     for i, card in enumerate(cards):
         color = colors[i % len(colors)]
         print(f"新闻 {i+1}/{len(cards)}: {card['title'][:25]}...")
         img = str(output_dir / f"news_{i+1}.png")
-        render_png(make_news_card_html(card, color), img)
+        render_png(make_news_card_html(card, color, progress_html), img)
         audio = str(output_dir / f"news_{i+1}.mp3")
         generate_tts(f"{card['title']}。{card.get('description', '')}", audio)
         segments.append((img, audio, get_audio_duration(audio) + 0.5))
