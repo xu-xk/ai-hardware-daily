@@ -128,11 +128,19 @@ body{{font-family:'Noto Sans SC',sans-serif;background:#fbf9f6;color:#333;min-he
 </body></html>'''
 
 
-def make_news_card_html(card: dict, accent_color: str = '#c96442', progress_html: str = '') -> str:
-    """单条新闻卡片（带顶部进度条）"""
+def make_news_card_html(card: dict, accent_color: str = '#c96442', progress_html: str = '', bullet_points: list = None) -> str:
+    """单条新闻卡片（带进度条 + 要点列表）"""
     title = card['title']
-    desc = card.get('description', card['title'])
     category = card.get('category', '')
+    
+    # 生成要点列表 HTML
+    if bullet_points:
+        items_html = ''.join([f'<li>{bp}</li>' for bp in bullet_points])
+        list_html = f'<ul class="points">{items_html}</ul>'
+    else:
+        desc = card.get('description', '')
+        list_html = f'<div class="desc">{desc}</div>'
+    
     return f'''<!DOCTYPE html>
 <html><head><meta charset="UTF-8">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;600;700&display=swap" rel="stylesheet" />
@@ -147,14 +155,18 @@ body{{margin:0;display:flex;justify-content:center;align-items:center;min-height
 .accent{{width:8px;background:{accent_color};flex-shrink:0}}
 .content{{flex:1;padding:60px 80px}}
 .tag{{display:inline-block;background:{accent_color};color:#fff;font-size:20px;font-weight:700;padding:6px 20px;border-radius:8px;margin-bottom:24px}}
-h2{{font-size:56px;font-weight:700;color:#2d2d2d;margin:0 0 20px;line-height:1.3}}
+h2{{font-size:48px;font-weight:700;color:#2d2d2d;margin:0 0 32px;line-height:1.3}}
+.points{{list-style:none;padding:0;margin:0}}
+.points li{{font-size:28px;color:#444;line-height:1.6;padding:10px 0 10px 28px;position:relative;border-bottom:1px solid #f0efeb}}
+.points li:last-child{{border-bottom:none}}
+.points li::before{{content:'';position:absolute;left:0;top:18px;width:10px;height:10px;border-radius:50%;background:{accent_color}}}
 .desc{{font-size:28px;color:#666;line-height:1.6}}
 </style></head><body>
 <div class="page">
 {progress_html}
 <div class="card-area">
 <div class="card"><div class="accent"></div>
-<div class="content"><div class="tag">{category}</div><h2>{title}</h2><div class="desc">{desc}</div></div>
+<div class="content"><div class="tag">{category}</div><h2>{title}</h2>{list_html}</div>
 </div></div></div></body></html>'''
 
 
@@ -220,31 +232,31 @@ def generate_video(daily: dict) -> str:
         color = colors[i % len(colors)]
         print(f"新闻 {i+1}/{len(cards)}: {card['title'][:25]}...")
         
-        # LLM 扩写描述
+        # LLM 提炼要点
         short_desc = card.get('description', card['title'])
         try:
             resp = llm_client.chat.completions.create(
                 model=DEEPSEEK_MODEL,
                 messages=[{
                     "role": "user",
-                    "content": f"用中文写一段100-150字的科技新闻播报稿，语言流畅适合口播。不要标题，直接写内容。主题：{card['title']}。原始信息：{short_desc}"
+                    "content": f"根据以下科技新闻，提炼3-5个关键要点，每个要点一句话（15-25字），用中文。直接输出要点，每行一个，不要编号不要标题。\n\n主题：{card['title']}\n原始信息：{short_desc}"
                 }],
-                temperature=0.5,
+                temperature=0.3,
                 max_tokens=300,
             )
-            detailed_desc = resp.choices[0].message.content.strip()
+            bullet_points = [p.strip().lstrip('0123456789.、-•· ') for p in resp.choices[0].message.content.strip().split('\n') if p.strip()]
+            bullet_points = [p for p in bullet_points if len(p) > 4][:5]
         except:
-            detailed_desc = short_desc
+            bullet_points = [short_desc]
         
-        # 生成卡片（显示详细内容）
-        card_expanded = dict(card)
-        card_expanded['description'] = detailed_desc
+        # 生成卡片（要点列表）
         img = str(output_dir / f"news_{i+1}.png")
-        render_png(make_news_card_html(card_expanded, color, progress_html), img)
+        render_png(make_news_card_html(card, color, progress_html, bullet_points), img)
         
-        # TTS 详细播报
+        # TTS 播报（念标题 + 要点）
+        tts_text = f"{card['title']}。" + '。'.join(bullet_points)
         audio = str(output_dir / f"news_{i+1}.mp3")
-        generate_tts(f"{card['title']}。{detailed_desc}", audio)
+        generate_tts(tts_text, audio)
         segments.append((img, audio, get_audio_duration(audio) + 0.5))
     
     # 合成
