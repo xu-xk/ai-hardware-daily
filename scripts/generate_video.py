@@ -128,18 +128,21 @@ body{{font-family:'Noto Sans SC',sans-serif;background:#fbf9f6;color:#333;min-he
 </body></html>'''
 
 
-def make_news_card_html(card: dict, accent_color: str = '#c96442', progress_html: str = '', bullet_points: list = None) -> str:
-    """单条新闻卡片（带进度条 + 要点列表）"""
+def make_news_card_html(card: dict, accent_color: str = '#c96442', progress_html: str = '', content_blocks: list = None) -> str:
+    """单条新闻卡片（带进度条 + 分块内容）"""
     title = card['title']
     category = card.get('category', '')
     
-    # 生成要点列表 HTML
-    if bullet_points:
-        items_html = ''.join([f'<li>{bp}</li>' for bp in bullet_points])
-        list_html = f'<ul class="points">{items_html}</ul>'
+    # 生成分块 HTML
+    if content_blocks:
+        blocks_html = ''
+        for block in content_blocks:
+            st = block.get('subtitle', '')
+            ct = block.get('content', '')
+            blocks_html += f'<div class="block"><div class="block-title">{st}</div><div class="block-content">{ct}</div></div>'
     else:
         desc = card.get('description', '')
-        list_html = f'<div class="desc">{desc}</div>'
+        blocks_html = f'<div class="block"><div class="block-content">{desc}</div></div>'
     
     return f'''<!DOCTYPE html>
 <html><head><meta charset="UTF-8">
@@ -153,20 +156,19 @@ body{{margin:0;display:flex;justify-content:center;align-items:center;min-height
 .card-area{{flex:1;display:flex;justify-content:center;align-items:center;padding:40px}}
 .card{{width:1600px;background:#fff;border-radius:32px;border:1px solid #dad8d4;box-shadow:0 10px 30px -10px rgba(74,64,58,0.1);display:flex;overflow:hidden}}
 .accent{{width:8px;background:{accent_color};flex-shrink:0}}
-.content{{flex:1;padding:60px 80px}}
-.tag{{display:inline-block;background:{accent_color};color:#fff;font-size:20px;font-weight:700;padding:6px 20px;border-radius:8px;margin-bottom:24px}}
-h2{{font-size:48px;font-weight:700;color:#2d2d2d;margin:0 0 32px;line-height:1.3}}
-.points{{list-style:none;padding:0;margin:0}}
-.points li{{font-size:28px;color:#444;line-height:1.6;padding:10px 0 10px 28px;position:relative;border-bottom:1px solid #f0efeb}}
-.points li:last-child{{border-bottom:none}}
-.points li::before{{content:'';position:absolute;left:0;top:18px;width:10px;height:10px;border-radius:50%;background:{accent_color}}}
-.desc{{font-size:28px;color:#666;line-height:1.6}}
+.content{{flex:1;padding:48px 64px}}
+.tag{{display:inline-block;background:{accent_color};color:#fff;font-size:18px;font-weight:700;padding:5px 18px;border-radius:8px;margin-bottom:20px}}
+h2{{font-size:44px;font-weight:700;color:#2d2d2d;margin:0 0 28px;line-height:1.3}}
+.blocks{{display:flex;flex-direction:column;gap:16px}}
+.block{{padding:16px 20px;background:#faf9f6;border-radius:16px;border-left:4px solid {accent_color}}}
+.block-title{{font-size:22px;font-weight:700;color:{accent_color};margin-bottom:8px}}
+.block-content{{font-size:24px;color:#444;line-height:1.7}}
 </style></head><body>
 <div class="page">
 {progress_html}
 <div class="card-area">
 <div class="card"><div class="accent"></div>
-<div class="content"><div class="tag">{category}</div><h2>{title}</h2>{list_html}</div>
+<div class="content"><div class="tag">{category}</div><h2>{title}</h2><div class="blocks">{blocks_html}</div></div>
 </div></div></div></body></html>'''
 
 
@@ -232,31 +234,39 @@ def generate_video(daily: dict) -> str:
         color = colors[i % len(colors)]
         print(f"新闻 {i+1}/{len(cards)}: {card['title'][:25]}...")
         
-        # LLM 提炼要点
+        # LLM 生成分块内容
         short_desc = card.get('description', card['title'])
         try:
             resp = llm_client.chat.completions.create(
                 model=DEEPSEEK_MODEL,
                 messages=[{
                     "role": "user",
-                    "content": f"根据以下科技新闻，提炼3-5个关键要点，每个要点一句话（15-25字），用中文。直接输出要点，每行一个，不要编号不要标题。\n\n主题：{card['title']}\n原始信息：{short_desc}"
+                    "content": f"根据以下科技新闻，生成3-4个内容块。每个块用JSON格式：{{\"subtitle\": \"小标题2-4字\", \"content\": \"内容30-50字\"}}。直接输出JSON数组，不要其他文字。\n\n主题：{card['title']}\n原始信息：{short_desc}"
                 }],
                 temperature=0.3,
-                max_tokens=300,
+                max_tokens=500,
             )
-            bullet_points = [p.strip().lstrip('0123456789.、-•· ') for p in resp.choices[0].message.content.strip().split('\n') if p.strip()]
-            bullet_points = [p for p in bullet_points if len(p) > 4][:5]
+            raw = resp.choices[0].message.content.strip()
+            if raw.startswith('```'):
+                raw = raw.split('\n', 1)[1] if '\n' in raw else raw
+                if raw.endswith('```'): raw = raw[:-3]
+                raw = raw.strip()
+            content_blocks = json.loads(raw)
+            if not isinstance(content_blocks, list):
+                content_blocks = [content_blocks]
         except:
-            bullet_points = [short_desc]
+            content_blocks = [{'subtitle': '详情', 'content': short_desc}]
         
-        # 生成卡片（要点列表）
+        # 生成卡片（分块内容）
         img = str(output_dir / f"news_{i+1}.png")
-        render_png(make_news_card_html(card, color, progress_html, bullet_points), img)
+        render_png(make_news_card_html(card, color, progress_html, content_blocks), img)
         
-        # TTS 播报（念标题 + 要点）
-        tts_text = f"{card['title']}。" + '。'.join(bullet_points)
+        # TTS 播报（念标题 + 各块内容）
+        tts_parts = [f"{card['title']}。"]
+        for block in content_blocks:
+            tts_parts.append(block.get('content', ''))
         audio = str(output_dir / f"news_{i+1}.mp3")
-        generate_tts(tts_text, audio)
+        generate_tts(' '.join(tts_parts), audio)
         segments.append((img, audio, get_audio_duration(audio) + 0.5))
     
     # 合成
