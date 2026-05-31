@@ -29,6 +29,7 @@ jobs:
           sudo apt-get update && sudo apt-get install -y ffmpeg
           pip install -r requirements.txt
           playwright install chromium --with-deps
+          cd juya-news-card && npm install
 
       - name: Run daily pipeline
         env:
