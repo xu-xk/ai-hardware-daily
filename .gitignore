@@ -4,3 +4,8 @@ __pycache__/
 data/raw_*.json
 data/daily_*.json
 data/issue_preview_*.md
+juya-news-card/node_modules/
+juya-news-card/output/
+data/juya_cards_*/
+data/video_*/
+data/images_*/
