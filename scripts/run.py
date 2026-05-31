@@ -1,11 +1,5 @@
 """
 AI + 硬件日报 — 主入口
-用法:
-  python run.py              # 完整流程：采集 → 生成 → 发布(dry run)
-  python run.py --publish    # 完整流程：采集 → 生成 → 真正发布
-  python run.py --collect    # 仅采集
-  python run.py --generate   # 仅生成（需已有采集数据）
-  python run.py --preview    # 仅预览 Issue（需已有日报数据）
 """
 import sys
 import json
@@ -45,10 +39,8 @@ def main():
         print(f"\n采集到 {len(items)} 条新闻")
         
         if collect_only:
-            print("[collect 模式] 仅采集，退出")
             return
     else:
-        # 加载已有数据
         raw_file = DATA_DIR / f"raw_{today}.json"
         if not raw_file.exists():
             print(f"[ERROR] 未找到采集数据: {raw_file}")
@@ -63,11 +55,17 @@ def main():
         print("=" * 60)
         daily = generate_daily(items)
         
+        # 验证 cards
+        cards_count = len(daily.get('cards', []))
+        print(f"生成结果: {cards_count} 条新闻")
+        
+        if cards_count == 0:
+            print("[ERROR] LLM 未生成任何新闻，退出")
+            return
+        
         if generate_only:
-            print("[generate 模式] 仅生成，退出")
             return
     else:
-        # 加载已有日报
         daily_file = DATA_DIR / f"daily_{date}.json"
         if not daily_file.exists():
             print(f"[ERROR] 未找到日报数据: {daily_file}")
@@ -78,49 +76,51 @@ def main():
     print("\n" + "=" * 60)
     print("  Step 3: 生成封面卡片")
     print("=" * 60)
+    png_path = None
     try:
         png_path = generate_card(daily)
         print(f"封面卡片: {png_path}")
     except Exception as e:
         print(f"[WARN] 封面卡片生成失败: {e}")
-        png_path = None
 
-    # ── Step 4: 生成多卡片 + 音频 + 视频 ──
+    # ── Step 4: 生成视频 ──
     video_path = None
     print("\n" + "=" * 60)
     print("  Step 4: 生成视频")
     print("=" * 60)
     try:
-        # 视频只取 top 5 新闻
         video_daily = dict(daily)
         video_daily['cards'] = daily.get('cards', [])[:5]
-        card_paths = generate_all_cards(video_daily)
-        audio_paths = generate_all_audio(video_daily)
-        video_path = generate_video(video_daily, card_paths, audio_paths)
+        video_path = generate_video(video_daily)
         print(f"视频: {video_path}")
     except Exception as e:
         print(f"[WARN] 视频生成失败: {e}")
 
-    # ── Step 5: 发布 ──
+    # ── Step 5: 发布 Issue ──
     print("\n" + "=" * 60)
     print(f"  Step 5: 发布 Issue {'(正式)' if publish else '(预览)'}")
     print("=" * 60)
+    
+    # 最终验证
+    final_cards = len(daily.get('cards', []))
+    print(f"发布前验证: {final_cards} 条新闻")
+    
     result = publish_issue(daily, dry_run=not publish, card_path=png_path)
 
-    # ── 标记已使用 ──
+    # 标记已使用
     if publish:
         mark_as_used(items)
         print("\n✅ 日报已发布并标记已使用新闻")
     else:
         print(f"\n📋 预览模式，加 --publish 参数正式发布")
 
-    # ── 输出摘要 ──
+    # 输出摘要
     cards = daily.get("cards", [])
     print(f"\n📊 今日日报: {len(cards)} 条新闻")
     for card in cards:
         cat = card.get("category", "")
         stars = "⭐" * card.get("importance", 3)
-        print(f"  {stars} [{cat}] {card['title']}")
+        print(f"  {stars} [{cat}] {card['title'][:50]}")
 
 
 if __name__ == "__main__":
