@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from config import DATA_DIR, DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL
 from generate_card import render_png
 from fetch_images import extract_article_image, download_image
+from juya_card_gen import generate_card_for_news
 from openai import OpenAI
 
 
@@ -270,39 +271,24 @@ def generate_video(daily: dict) -> str:
             except Exception as e:
                 print(f"  图片失败: {e}")
         
-        # LLM 生成分块内容
+        # 用橘鸦的 juya-news-card 生成卡片
         short_desc = card.get('description', card['title'])
-        try:
-            resp = llm_client.chat.completions.create(
-                model=DEEPSEEK_MODEL,
-                messages=[{
-                    "role": "user",
-                    "content": f"根据以下科技新闻，生成3-4个内容块。每个块用JSON格式：{{\"subtitle\": \"小标题2-4字\", \"content\": \"内容30-50字\"}}。直接输出JSON数组，不要其他文字。\n\n主题：{card['title']}\n原始信息：{short_desc}"
-                }],
-                temperature=0.3,
-                max_tokens=500,
-            )
-            raw = resp.choices[0].message.content.strip()
-            if raw.startswith('```'):
-                raw = raw.split('\n', 1)[1] if '\n' in raw else raw
-                if raw.endswith('```'): raw = raw[:-3]
-                raw = raw.strip()
-            content_blocks = json.loads(raw)
-            if not isinstance(content_blocks, list):
-                content_blocks = [content_blocks]
-        except:
-            content_blocks = [{'subtitle': '详情', 'content': short_desc}]
+        news_text = f"{card['title']}。{short_desc}"
         
-        # 生成文字卡片
-        img = str(output_dir / f"news_{i+1}.png")
-        render_png(make_news_card_html(card, color, progress_html, content_blocks), img)
+        juya_dir = output_dir / f"juya_{i+1}"
+        juya_dir.mkdir(parents=True, exist_ok=True)
+        img = generate_card_for_news(news_text, str(juya_dir))
+        
+        if not img:
+            # 备用：用自己的 HTML 生成
+            print(f"  橘鸦卡片失败，用备用方案")
+            img = str(output_dir / f"news_{i+1}.png")
+            render_png(make_news_card_html(card, color, progress_html), img)
         
         # TTS 播报
-        tts_parts = [f"{card['title']}。"]
-        for block in content_blocks:
-            tts_parts.append(block.get('content', ''))
+        tts_text = f"{card['title']}。{short_desc}"
         audio = str(output_dir / f"news_{i+1}.mp3")
-        generate_tts(' '.join(tts_parts), audio)
+        generate_tts(tts_text, audio)
         segments.append((img, audio, get_audio_duration(audio) + 0.5))
         
         # 如果有原文图片，插入一帧图片幻灯片
