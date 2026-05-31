@@ -69,6 +69,23 @@ def generate_html(daily: dict) -> str:
                     html = html[:-3]
                 html = html.strip()
             
+            # 提取纯 HTML（去掉 LLM 附加的解释文字）
+            import re
+            doctype_match = re.search(r'<!DOCTYPE[^>]*>', html, re.IGNORECASE)
+            html_tag_match = re.search(r'<html[\s>]', html, re.IGNORECASE)
+            
+            start_idx = -1
+            if doctype_match:
+                start_idx = doctype_match.start()
+            elif html_tag_match:
+                start_idx = html_tag_match.start()
+            
+            if start_idx >= 0:
+                html = html[start_idx:]
+                end_idx = html.rfind('</html>')
+                if end_idx >= 0:
+                    html = html[:end_idx + 7]
+            
             # 验证是有效 HTML
             if "<html" in html.lower() or "<!doctype" in html.lower():
                 return html
